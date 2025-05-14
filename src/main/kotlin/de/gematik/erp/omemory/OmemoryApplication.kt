@@ -4,8 +4,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
 
 @SpringBootApplication
-class OmemoryApplication
+open class OmemoryApplication
 
 fun main(args: Array<String>) {
-	runApplication<OmemoryApplication>(*args)
+    runApplication<OmemoryApplication>(*args)
 }
