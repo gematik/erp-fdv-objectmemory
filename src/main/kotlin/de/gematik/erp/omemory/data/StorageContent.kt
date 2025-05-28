@@ -3,14 +3,17 @@ package de.gematik.erp.omemory.data
 import jakarta.persistence.*
 
 @Entity
-@Table(name = "storageInfos")
+@Table(name = "storages")
 data class StorageContent(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
-    @Column
-    val storageName: String = "",
-    @Lob
+
+    @JoinColumn(name = "storage_id")
+    @ManyToOne(fetch = FetchType.LAZY)
+    val storageMeta: StorageMeta,
+
     //@Column(columnDefinition = "jsonb")
-    val storageContent: String = ""
+    @Lob
+    val storageContent: String = "",
 )
