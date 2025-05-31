@@ -5,15 +5,14 @@ import jakarta.persistence.*
 @Entity
 @Table(name = "storages")
 data class StorageContent(
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
 
-    @JoinColumn(name = "storage_id")
+    @JoinColumn(name = "storage_id", nullable = false)
     @ManyToOne(fetch = FetchType.LAZY)
     val storageMeta: StorageMeta,
 
-    //@Column(columnDefinition = "jsonb")
-    @Lob
-    val storageContent: String = "",
+    val storageContent: String,
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    val id: Long = 0,
 )
