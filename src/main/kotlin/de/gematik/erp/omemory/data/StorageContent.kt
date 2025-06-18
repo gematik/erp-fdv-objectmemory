@@ -10,6 +10,7 @@ data class StorageContent(
     @ManyToOne(fetch = FetchType.LAZY)
     val storageMeta: StorageMeta,
 
+    @Column
     val storageContent: String,
 
     @Id
