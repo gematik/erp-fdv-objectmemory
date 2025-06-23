@@ -1,11 +1,9 @@
 package de.gematik.erp.omemory.data
 
 import org.springframework.data.jpa.repository.JpaRepository
-import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 
-interface StorageMetaRepository: JpaRepository<StorageMeta, String> {
+interface StorageMetaRepository : JpaRepository<StorageMeta, Long> {
     fun findByStorageName(name: String): StorageMeta?
-    @Query("SELECT s.structure FROM StorageMeta s WHERE s.storageName = :name")
-    fun findStructureByName(name: String): String?
-
+    fun findByTelematikId(@Param("telematikId") telematikId: String): StorageMeta?
 }

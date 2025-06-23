@@ -7,14 +7,23 @@ import jakarta.persistence.*
 data class StorageMeta(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "storage_id")
-    val id: Long = 0,
+    @Column(name = "id")
+    val id: Long,
+
+    @Column(name = "actor_id", unique = true)
+    val actorId: String,
 
     @Column(name = "storage_name")
-    val storageName: String = "",
+    val storageName: String,
 
-    @Column
-    val structure: List<String> = emptyList(),
-)
+    @Column(name = "telematik_id")
+    val telematikId: String,
+
+    @Column(unique = true)
+    val accessToken: String
+){
+    // Required by JPA
+    constructor() : this(0, "", "", "", "")
+}
 
 

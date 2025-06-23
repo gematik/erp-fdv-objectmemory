@@ -11,6 +11,11 @@ import de.gematik.erp.omemory.data.StorageContent
 import de.gematik.erp.omemory.data.StorageContentRepository
 import de.gematik.erp.omemory.data.StorageMeta
 import de.gematik.erp.omemory.data.StorageMetaRepository
+import de.gematik.erp.omemory.data.StorageUrl
+import de.gematik.erp.omemory.data.StorageUrlRepository
+import de.gematik.erp.omemory.security.RequireGlobalApiKey
+import de.gematik.erp.omemory.security.RequireUserApiKey
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -20,24 +25,22 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.io.FileInputStream
+import java.net.URLEncoder
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 @RestController
 @RequestMapping("erp/omem")
-class OmemController(
+open class OmemController(
     private val storageMetaRepo: StorageMetaRepository,
     private val storageContentRepo: StorageContentRepository,
+    private val storageUrlRepo: StorageUrlRepository,
     private val jacksonObjectMapper: ObjectMapper
 ) {
+    val bucketName = "omem_bucket"
+    val dataTypes: MutableList<String> =
+        mutableListOf("LOGO", "TEAM_BILD", "AUSSENANSICHT", "INNENANSICHT", "INNENANSICHT_2")
 
-    fun storageExists(name: String): Boolean {
-        return storageContentRepo.findByStorageName(name).isEmpty()
-        /*if (jsonStrings.isEmpty()) {
-            return ResponseEntity.ok().body("Storage with name $name does not exist")
-        } else {
-            return ResponseEntity.ok().build()
-        }*/
-    }
 
     fun buildResponse(statusCode: Int, status: String, message: String): ResponseEntity<JsonNode> {
         val jsonNode = JsonNodeFactory.instance.objectNode()
@@ -47,19 +50,16 @@ class OmemController(
         return ResponseEntity.status(statusCode).body(jsonNode)
     }
 
-
-    @GetMapping("structure")
-    fun listPharmacyStructure(@RequestParam("storageName") name: String): ResponseEntity<JsonNode> {
-        val structure = storageMetaRepo.findStructureByName(name) ?: return buildResponse(
-            400,
-            "error",
-            "storage with name $name does not exist"
-        )
-        return buildResponse(200, "success", "$name storage should have the following fields: $structure")
+    fun generateRandomId(length: Int = 6): String {
+        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        return (1..length)
+            .map { chars.random() }
+            .joinToString("")
     }
 
-    @GetMapping("storage")
-    fun listStorages(@RequestParam("storageName") name: String): ResponseEntity<JsonNode> {
+    @RequireUserApiKey
+    @GetMapping("storage/get")
+    open fun listStorages(@RequestParam("storageName") name: String): ResponseEntity<JsonNode> {
         val jsonStrings = storageContentRepo.findByStorageName(name)
         if (jsonStrings.isEmpty()) {
             return buildResponse(
@@ -75,8 +75,8 @@ class OmemController(
         return ResponseEntity.ok(jsonNode)
     }
 
-    @GetMapping("storage/{id}")
-    fun listStorage(
+    @GetMapping("storage/get/{id}")
+    open fun listStorage(
         @RequestParam("storageName") name: String,
         @PathVariable("id") id: Long
     ): ResponseEntity<JsonNode> {
@@ -94,7 +94,7 @@ class OmemController(
     }
 
     @GetMapping("storageField/{id}")
-    fun listStorageField(
+    open fun listStorageField(
         @RequestParam("storageName") name: String,
         @RequestParam("storageField") field: String,
         @PathVariable("id") id: Long
@@ -120,44 +120,16 @@ class OmemController(
         return ResponseEntity.ok(jsonField)
     }
 
-    @PutMapping("storage/register")
-    fun registerStorage(@RequestParam("name") name: String, @RequestBody body: List<String>): ResponseEntity<JsonNode> {
-        if (storageMetaRepo.findByStorageName(name) != null) {
-            return buildResponse(400, "error", "storage with name $name already exists")
-        }
-        val storage = StorageMeta(0, name, body)
-        storageMetaRepo.save(storage)
-
-        return buildResponse(200, "success", "storage with name $name registered successfully")
-    }
-
+    @RequireUserApiKey
     @PutMapping("storage/put")
-    fun putInStorage(@RequestParam("name") name: String, @RequestBody body: JsonNode): ResponseEntity<JsonNode> {
+    open fun putInStorage(@RequestParam("name") name: String, @RequestBody body: JsonNode): ResponseEntity<JsonNode> {
         val storageMeta =
             storageMetaRepo.findByStorageName(name) ?: return buildResponse(
                 400,
                 "error",
                 "storage with name $name does not exist"
             )
-        val storageStructure = storageMeta.structure
-        val fieldNames = body.fieldNames().asSequence().toList()
-        val extra = fieldNames - storageStructure
-        val missing = storageStructure - fieldNames
 
-        if (extra.isNotEmpty()) {
-            return buildResponse(
-                400,
-                "error",
-                "Invalid structure: structure of $name storage does not have parameters: $extra"
-            )
-        }
-        if (missing.isNotEmpty()) {
-            return buildResponse(
-                400,
-                "error",
-                "Invalid structure: structure of $name storage should have parameters: $missing"
-            )
-        }
         val storageContent = storageContentRepo.findByStorageName(name)
         val jsonStorageContent = storageContent.map { jacksonObjectMapper.readTree(it) }
         val entriesWithSameId = jsonStorageContent.stream().filter { it.get("id").equals(body.get("id")) }.findAny()
@@ -166,78 +138,131 @@ class OmemController(
         }
         //convert JSON (JsonNode) to JsonString
         val jsonString = jacksonObjectMapper.writeValueAsString(body)
-        val storage = StorageContent(storageMeta = storageMeta, storageContent = jsonString)
+        val storage = StorageContent(0, storageMeta = storageMeta, storageContent = jsonString)
         storageContentRepo.save(storage)
         return buildResponse(200, "success", "New entry added to the $name storage")
 
     }
 
-    @PutMapping("storage/upload/direct")
-    fun writeToGCSDirectly(@RequestBody content: ByteArray): ResponseEntity<JsonNode> {
-        val bucketName = "omem_bucket"
-        val objectName = "uploads/my-first-file.txt"
+    @RequireGlobalApiKey
+    @PutMapping("storage/register")
+    open fun registerActor(
+        @RequestParam("actorName") name: String,
+        @RequestParam("telematikId") telematikId: String
+    ): ResponseEntity<JsonNode> {
+        val maxAttempts = 5
+        val accessToken = UUID.randomUUID().toString()
 
-        val storage = StorageOptions.newBuilder().setCredentials(
-            ServiceAccountCredentials.fromStream(
-                FileInputStream("/Users/a.ibrokhimov/Downloads/magnetic-flare-462410-t3-b2153670acce.json")
-            )
-        ).build().service
-        val blobInfo = BlobInfo.newBuilder(bucketName, objectName)
-            .setContentType("text/plain")
+        repeat(maxAttempts) {
+            val id = generateRandomId()
+            try {
+                val storageMeta = StorageMeta(0, id, name, telematikId, accessToken)
+                storageMetaRepo.save(storageMeta)
+                return buildResponse(200, "success", "Here is your user AccessToken: $accessToken")
+            } catch (ex : DataIntegrityViolationException) {
+                println("Collision detected for id=$id, retrying...")
+            }
+        }
+        throw IllegalStateException("Failed to generate a unique client ID after $maxAttempts attempts")
+    }
+
+    @RequireGlobalApiKey
+    @GetMapping("storage/read/id")
+    open fun readFromBucketById(
+        @RequestParam actorName: String,
+        @RequestParam telematikId: String,
+        @RequestParam dataType: String
+    ): ResponseEntity<JsonNode> {
+        val storage: Storage = StorageOptions.newBuilder()
+            .setCredentials(ServiceAccountCredentials.fromStream(FileInputStream("/Users/a.ibrokhimov/Downloads/magnetic-flare-462410-t3-b2153670acce.json")))
             .build()
+            .service
 
-        storage.create(blobInfo, content)
-        return buildResponse(200, "success", "\"✅ Uploaded as gs://$bucketName/$objectName\"")
-
+        val storageId = storageMetaRepo.findByTelematikId(telematikId)!!.id
+        println("STORAGEID: $storageId")
+        val url = storageUrlRepo.findStorageUrl(storageId, dataType)
+        return if (url == null) {
+            buildResponse(400, "error", "No such object: $dataType for actor $actorName with telematikId $telematikId")
+        } else {
+            buildResponse(200, "success", url)
+        }
     }
 
     @GetMapping("storage/read")
-    fun readFromBucket(
+    open fun readFromBucket(
         @RequestParam actorName: String,
-        @RequestParam actorId: String,
-        @RequestParam imageType: String
-    ): ResponseEntity<JsonNode> {
+        @RequestParam dataType: String
+    ): JsonNode {
         val storage: Storage = StorageOptions.newBuilder()
             .setCredentials(ServiceAccountCredentials.fromStream(FileInputStream("/Users/a.ibrokhimov/Downloads/magnetic-flare-462410-t3-b2153670acce.json")))
             .build()
             .service
-        val bucketName = "omem_bucket"
-        val objectName = "$actorName/$actorId/$imageType"
-        val blobInfo = BlobInfo.newBuilder(bucketName, objectName).build()
 
-        val signedUrl = storage.signUrl(
-            blobInfo,
-            1, // duration
-            TimeUnit.MINUTES,
-            Storage.SignUrlOption.withV4Signature()
-        )
-        return buildResponse(200, "success", "\"✅ Here is your URL to an object: $signedUrl")
+        val arrayNode = jacksonObjectMapper.createArrayNode()
+        val pharmacyMap = mutableMapOf<String, MutableMap<String, String>>()
+        val storageUrls = storageUrlRepo.findAll()
+        for (storageUrl in storageUrls) {
+            val imageMap = pharmacyMap.getOrPut(storageUrl.telematikId) {
+                mutableMapOf("pharmacy" to storageUrl.telematikId)
+            }
+            imageMap[storageUrl.dataType] = storageUrl.url
+        }
 
-
+        // Convert to JsonNode
+        for (pharmacyEntry in pharmacyMap.values) {
+            val node = jacksonObjectMapper.valueToTree<JsonNode>(pharmacyEntry)
+            arrayNode.add(node)
+        }
+        return arrayNode
     }
 
+    //@RequireUserApiKey
     @PutMapping("storage/upload")
-    fun writeToBucket(
-        @RequestParam actorName: String,
-        @RequestParam actorId: String,
-        @RequestParam imageType: String
+    open fun writeToBucket(
+        @RequestParam dataType: String, @RequestBody body: JsonNode,
     ): ResponseEntity<JsonNode> {
         val storage: Storage = StorageOptions.newBuilder()
             .setCredentials(ServiceAccountCredentials.fromStream(FileInputStream("/Users/a.ibrokhimov/Downloads/magnetic-flare-462410-t3-b2153670acce.json")))
             .build()
             .service
-        val bucketName = "omem_bucket"
-        val objectName = "$actorName/$actorId/$imageType"
 
-        val blobInfo = BlobInfo.newBuilder(bucketName, objectName).build()
+        val telematikId = body.get("telematikId").toString().trim('"')
+        val accessToken = body.get("accessToken").toString().trim('"')
+        //val accessTokenFromDb = storageMetaRepo.findAccessToken(telematikId)
+        val accessTokenFromDb = storageMetaRepo.findByTelematikId(telematikId)?.accessToken
+        if (accessToken != accessTokenFromDb) {
+            return buildResponse(401, "error", "Access token is incorrect")
+        }
+        //val actorId = storageMetaRepo.findActorId(telematikId)
+        val actorId = storageMetaRepo.findByTelematikId(telematikId)?.actorId
+
+        val objectName = "pharmacy/$actorId/$dataType"
+        val contentType = body.get("contentType").toString().trim('"')
+        val blobInfo = BlobInfo.newBuilder(bucketName, objectName).setContentType(contentType).build()
 
         val signedURL = storage.signUrl(
             blobInfo,
             15, TimeUnit.MINUTES,
             Storage.SignUrlOption.httpMethod(com.google.cloud.storage.HttpMethod.PUT),
-            Storage.SignUrlOption.withV4Signature()
+            Storage.SignUrlOption.withV4Signature(),
+            Storage.SignUrlOption.withContentType()
         )
-        return buildResponse(200, "success", "✅ Here is your signed PUT URL: $signedURL")
+        val jsonNode = JsonNodeFactory.instance.objectNode()
+        jsonNode.put("signedUrl", signedURL.toString())
+        return ResponseEntity.ok(jsonNode)
     }
 
+    @PutMapping("storage/confirm-upload")
+    open fun confirmUpload(@RequestParam telematikId: String, @RequestParam dataType: String) {
+        val storageMeta = storageMetaRepo.findByTelematikId(telematikId)!!
+        val actorId = storageMeta.actorId
+
+        val encodedActorId = URLEncoder.encode(actorId, "UTF-8").replace("+", "%20")
+        val encodedData = URLEncoder.encode(dataType, "UTF-8").replace("+", "%20")
+
+        // store URL to an image in a database for future requests
+        val url = "https://storage.googleapis.com/$bucketName/pharmacy/$encodedActorId/$encodedData"
+        val storageUrl = StorageUrl(0, storageMeta, url, dataType, telematikId)
+        storageUrlRepo.save(storageUrl)
+    }
 }
