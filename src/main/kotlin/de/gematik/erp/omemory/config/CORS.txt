@@ -1,0 +1,19 @@
+cors.json is necessary to configure GCS bucket to allow CORS (Cross-Origin Resource Sharing)
+which GCS does not allow per default
+
+Example: when running Frontend (React App) on localhost:5173, I cannot make requests to GCS (https://storage.googleapis.com/omem-bucket...)
+because these two are different origins.
+
+Solution:
+1. create cors.json and specify origin which should be allowed to make request to a target (in this case GCS bucket)
+2. run "gsutil cors set cors.json gs://omem_bucket"
+3. CORS is configured and GCS bucket allows requests from that origin as an exception
+-------------------------------------
+However, when React App is no longer server from localhost, but is deployed to another bucket (omem-ui)
+and can be served from "https://storage.googleapis.com/omem-ui/index.html", CORS is no longer needed
+because the request is sent from "https://storage.googleapis.com/..." to "https://storage.googleapis.com/..." which is one origin
+
+To remove CORS config, run "gsutil cors set no-cors.json gs://omem_bucket"
+Check if CORS was removed with "gsutil cors get gs://omem_bucket"
+
+
