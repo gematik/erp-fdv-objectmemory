@@ -24,6 +24,21 @@
         <kotlin.compiler.jvmTarget>17</kotlin.compiler.jvmTarget>
     </properties>
 
+    <profiles>
+        <profile>
+            <id>dist</id>
+            <build>
+                <finalName>omem-server-jar-with-dependencies</finalName>
+                <plugins>
+                    <plugin>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-maven-plugin</artifactId>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
     <!--<repositories>
         <repository>
             <id>mavenCentral</id>
