@@ -1,0 +1,191 @@
+package de.gematik.erp.omemory.controller
+
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.google.auth.oauth2.ServiceAccountCredentials
+import com.google.cloud.storage.BlobInfo
+import com.google.cloud.storage.HttpMethod
+import com.google.cloud.storage.Storage
+import com.google.cloud.storage.StorageOptions
+import de.gematik.erp.omemory.data.StorageMeta
+import de.gematik.erp.omemory.data.StorageMetaRepository
+import de.gematik.erp.omemory.data.StorageUrl
+import de.gematik.erp.omemory.data.StorageUrlRepository
+import de.gematik.erp.omemory.security.RequireGlobalApiKey
+import de.gematik.erp.omemory.security.RequireUserApiKey
+import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PutMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RestController
+import java.io.FileInputStream
+import java.net.URLEncoder
+import java.util.Locale
+import java.util.Locale.getDefault
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+
+@RestController
+@RequestMapping("erp/omem")
+open class OmemController(
+    private val storageMetaRepo: StorageMetaRepository,
+    private val storageUrlRepo: StorageUrlRepository,
+    private val jacksonObjectMapper: ObjectMapper
+) {
+    val storage: Storage = StorageOptions.newBuilder()
+        .setCredentials(ServiceAccountCredentials.fromStream(FileInputStream("/Users/a.ibrokhimov/Downloads/magnetic-flare-462410-t3-b2153670acce.json")))
+        .build()
+        .service
+    val bucketName = "omem_bucket"
+    val dataTypes: MutableList<String> =
+        mutableListOf("LOGO", "TEAM_BILD", "AUSSENANSICHT", "INNENANSICHT", "INNENANSICHT_2")
+
+
+    fun buildResponse(statusCode: Int, status: String, message: String): ResponseEntity<JsonNode> {
+        val jsonNode = JsonNodeFactory.instance.objectNode()
+        jsonNode.put("status", status)
+        jsonNode.put("statusCode", statusCode)
+        jsonNode.put("message", message)
+        return ResponseEntity.status(statusCode).body(jsonNode)
+    }
+
+    fun generateRandomId(length: Int = 6): String {
+        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        return (1..length)
+            .map { chars.random() }
+            .joinToString("")
+    }
+
+    @RequireGlobalApiKey
+    @PutMapping("storage/register")
+    open fun registerActor(
+        @RequestParam("actorName") name: String,
+        @RequestParam("telematikId") telematikId: String
+    ): ResponseEntity<JsonNode> {
+        val maxAttempts = 5
+        val accessToken = UUID.randomUUID().toString()
+
+        repeat(maxAttempts) {
+            val id = generateRandomId()
+            try {
+                val storageMeta = StorageMeta(0, id, name, telematikId, accessToken)
+                storageMetaRepo.save(storageMeta)
+                return buildResponse(200, "success", "Here is your user AccessToken: $accessToken")
+            } catch (ex: DataIntegrityViolationException) {
+                println("Collision detected for id=$id, retrying...")
+            }
+        }
+        throw IllegalStateException("Failed to generate a unique client ID after $maxAttempts attempts")
+    }
+
+    @RequireGlobalApiKey
+    @GetMapping("storage/readById")
+    open fun readFromBucketById(
+        @RequestParam actorName: String,
+        @RequestParam telematikId: String,
+        @RequestParam(required = false) dataType: String?
+    ): JsonNode {
+        val arrayNode = jacksonObjectMapper.createArrayNode()
+        val storageUrls: List<StorageUrl>?
+        return if (dataType == null) {
+            storageUrls = storageUrlRepo.findByTelematikId(telematikId).orEmpty()
+            for (storageUrl in storageUrls) {
+                arrayNode.add(jacksonObjectMapper.createObjectNode().put(storageUrl.dataType, storageUrl.url))
+            }
+            arrayNode
+        } else {
+            val storageUrl = storageUrlRepo.findByTelematikIdAndDataType(telematikId, dataType)
+            return if (storageUrl == null) {
+                val jsonNode = jacksonObjectMapper.createObjectNode()
+                jsonNode.put("status", "error")
+                jsonNode.put("statusCode", "400")
+                jsonNode.put("message", "pharmacy with telematikId $telematikId doesn't have data of type $dataType")
+                jsonNode
+            } else {
+                arrayNode.add(jacksonObjectMapper.valueToTree<JsonNode>(mapOf(dataType to storageUrl.url)))
+                return arrayNode
+            }
+
+        }
+    }
+
+    @GetMapping("storage/read")
+    open fun readAll(
+        @RequestParam actorName: String,
+        @RequestParam(required = false) dataType: String?
+    ): JsonNode {
+        val arrayNode = jacksonObjectMapper.createArrayNode()
+        val pharmacyMap = mutableMapOf<String, MutableMap<String, String>>()
+        val storageUrls: List<StorageUrl>
+        if (dataType == null) {
+            storageUrls = storageUrlRepo.findAll()
+        } else {
+            storageUrls = storageUrlRepo.findByDataType(dataType)!!
+        }
+        for (storageUrl in storageUrls) {
+            val imageMap = pharmacyMap.getOrPut(storageUrl.telematikId) {
+                mutableMapOf("pharmacy" to storageUrl.telematikId)
+            }
+            imageMap[storageUrl.dataType] = storageUrl.url
+        }
+
+        // Convert to JsonNode
+        for (pharmacyEntry in pharmacyMap.values) {
+            val node = jacksonObjectMapper.valueToTree<JsonNode>(pharmacyEntry)
+            arrayNode.add(node)
+        }
+        return arrayNode
+    }
+
+    @PutMapping("storage/signUrl")
+    open fun writeToBucket(
+        @RequestParam dataType: String, @RequestParam("telematikId") telematikId: String, @RequestBody body: JsonNode,
+    ): ResponseEntity<JsonNode> {
+        val storageMeta = storageMetaRepo.findByTelematikId(telematikId)
+        if (storageMeta == null) {
+            return buildResponse(400, "error", "TelematikId is not registered or does not exist")
+        }
+
+        val apiKey = body["accessToken"].asText()
+        val userApiKey = storageMeta.accessToken
+        if (apiKey != userApiKey) {
+            return buildResponse(401, "error","Invalid user API key")
+        }
+        if (!dataTypes.contains(dataType.uppercase(getDefault()))) {
+            return buildResponse(400, "error", "Data type $dataType is not supported")
+        }
+
+        val objectName = "pharmacy/${storageMeta.actorId}/$dataType"
+        val contentType = body["contentType"].toString().trim('"')
+        val blobInfo = BlobInfo.newBuilder(bucketName, objectName).setContentType(contentType).build()
+
+        val signedURL = storage.signUrl(
+            blobInfo,
+            15, TimeUnit.MINUTES,
+            Storage.SignUrlOption.httpMethod(HttpMethod.PUT),
+            Storage.SignUrlOption.withV4Signature(),
+            Storage.SignUrlOption.withContentType()
+        )
+        val jsonNode = JsonNodeFactory.instance.objectNode()
+        jsonNode.put("signedUrl", signedURL.toString())
+        return ResponseEntity.ok(jsonNode)
+    }
+
+    @PutMapping("storage/confirm-upload")
+    open fun confirmUpload(@RequestParam telematikId: String, @RequestParam dataType: String) {
+        val storageMeta = storageMetaRepo.findByTelematikId(telematikId)!!
+        val actorId = storageMeta.actorId
+
+        val encodedActorId = URLEncoder.encode(actorId, "UTF-8").replace("+", "%20")
+        val encodedData = URLEncoder.encode(dataType, "UTF-8").replace("+", "%20")
+
+        // store URL to an image in a database for future requests
+        val url = "https://storage.googleapis.com/$bucketName/pharmacy/$encodedActorId/$encodedData"
+        val storageUrl = StorageUrl(0, storageMeta, url, dataType, telematikId)
+        storageUrlRepo.save(storageUrl)
+    }
+}

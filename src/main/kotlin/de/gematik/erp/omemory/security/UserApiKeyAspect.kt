@@ -18,8 +18,7 @@ import org.springframework.web.server.ResponseStatusException
 @Aspect
 @Component
 class UserApiKeyAspect(
-    @Value("\${GLOBAL_API_KEY}") private val globalApiKey: String,
-    private val storageMetaRepo: StorageMetaRepository
+    @Value("\${GLOBAL_API_KEY}") private val globalApiKey: String
 ) {
     @Before("@annotation(RequireGlobalApiKey)")
     fun checkGlobalApiKey() {
@@ -31,21 +30,6 @@ class UserApiKeyAspect(
         }
     }
 
-    @Before("@annotation(RequireUserApiKey)")
-    fun checkUserApiKey() {
-        val request = (RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes).request
-        val apiKey = request.getHeader("X-USER-API-KEY")
-        val telematikId = request.getParameter("telematikId")
-
-        if(telematikId == null){
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "telematikId is required")
-        }
-        val userApiKey = storageMetaRepo.findByTelematikId(telematikId)?.accessToken
-
-        if (apiKey == null || apiKey != userApiKey) {
-            throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing or invalid User API key")
-        }
-    }
 }
 @ControllerAdvice
 class GlobalExceptionHandler{

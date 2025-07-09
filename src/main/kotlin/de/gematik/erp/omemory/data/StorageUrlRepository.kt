@@ -5,6 +5,11 @@ import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 
 interface StorageUrlRepository : JpaRepository<StorageUrl, Long> {
-    @Query("SELECT s.url FROM StorageUrl s WHERE s.storageMeta.id = :storageId AND s.dataType = :dataType")
-    fun findStorageUrl(@Param("storageId") storageId: Long, @Param ("dataType") dataType: String): String?
+    @Query("SELECT s FROM StorageUrl s WHERE s.dataType = :dataType")
+    fun findByDataType(@Param("dataType") dataType: String): List<StorageUrl>?
+    fun findByTelematikId(@Param("telematikId") telematikId: String): List<StorageUrl>?
+    fun findByTelematikIdAndDataType(
+        @Param("telematikId") telematikId: String,
+        @Param("dataType") dataType: String
+    ): StorageUrl?
 }
