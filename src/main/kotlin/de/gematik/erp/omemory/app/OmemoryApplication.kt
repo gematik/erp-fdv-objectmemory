@@ -1,4 +1,4 @@
-package de.gematik.erp.omemory
+package de.gematik.erp.omemory.app
 
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
