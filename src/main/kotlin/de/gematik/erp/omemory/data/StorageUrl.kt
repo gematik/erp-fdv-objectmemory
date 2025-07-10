@@ -9,6 +9,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import java.time.LocalDateTime
 
 @Entity
 @Table(name = "storage_urls")
@@ -28,9 +29,12 @@ data class StorageUrl(
     val dataType: String,
 
     @Column(name = "telematik_id")
-    val telematikId: String
+    val telematikId: String,
 
-){
+    @Column
+    val updatedAt: LocalDateTime = LocalDateTime.now()
+
+    ){
     // Required by JPA
     protected constructor() : this(0, StorageMeta(), "", "", "")
 }

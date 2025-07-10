@@ -13,18 +13,20 @@ import de.gematik.erp.omemory.data.StorageMetaRepository
 import de.gematik.erp.omemory.data.StorageUrl
 import de.gematik.erp.omemory.data.StorageUrlRepository
 import de.gematik.erp.omemory.security.RequireGlobalApiKey
-import de.gematik.erp.omemory.security.RequireUserApiKey
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.io.FileInputStream
 import java.net.URLEncoder
-import java.util.Locale
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 import java.util.Locale.getDefault
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -43,6 +45,7 @@ open class OmemController(
     val bucketName = "omem_bucket"
     val dataTypes: MutableList<String> =
         mutableListOf("LOGO", "TEAM_BILD", "AUSSENANSICHT", "INNENANSICHT", "INNENANSICHT_2")
+    private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
 
     fun buildResponse(statusCode: Int, status: String, message: String): ResponseEntity<JsonNode> {
@@ -74,7 +77,7 @@ open class OmemController(
             try {
                 val storageMeta = StorageMeta(0, id, name, telematikId, accessToken)
                 storageMetaRepo.save(storageMeta)
-                return buildResponse(200, "success", "Here is your user AccessToken: $accessToken")
+                return buildResponse(200, "OK", "Here is your user AccessToken: $accessToken")
             } catch (ex: DataIntegrityViolationException) {
                 println("Collision detected for id=$id, retrying...")
             }
@@ -84,11 +87,12 @@ open class OmemController(
 
     @RequireGlobalApiKey
     @GetMapping("storage/readById")
-    open fun readFromBucketById(
+    open fun readById(
         @RequestParam actorName: String,
         @RequestParam telematikId: String,
-        @RequestParam(required = false) dataType: String?
-    ): JsonNode {
+        @RequestParam(required = false) dataType: String?,
+        @RequestHeader(name = "X-Modified-Since", required = false) date: String?
+    ): ResponseEntity<JsonNode> {
         val arrayNode = jacksonObjectMapper.createArrayNode()
         val storageUrls: List<StorageUrl>?
         return if (dataType == null) {
@@ -96,22 +100,42 @@ open class OmemController(
             for (storageUrl in storageUrls) {
                 arrayNode.add(jacksonObjectMapper.createObjectNode().put(storageUrl.dataType, storageUrl.url))
             }
-            arrayNode
+            ResponseEntity.ok(arrayNode)
         } else {
             val storageUrl = storageUrlRepo.findByTelematikIdAndDataType(telematikId, dataType)
-            return if (storageUrl == null) {
-                val jsonNode = jacksonObjectMapper.createObjectNode()
-                jsonNode.put("status", "error")
-                jsonNode.put("statusCode", "400")
-                jsonNode.put("message", "pharmacy with telematikId $telematikId doesn't have data of type $dataType")
-                jsonNode
+            if (storageUrl == null) {
+                return buildResponse(
+                    400,
+                    "BAD_REQUEST",
+                    "pharmacy with telematikId $telematikId doesn't have data of type $dataType"
+                )
+            }
+            if (date != null) {
+                val clientTimeStamp: LocalDateTime = try {
+                    LocalDateTime.parse(date, formatter)
+                } catch (e: DateTimeParseException) {
+                    return buildResponse(400, "BAD_REQUEST", "Date format should be yyyy-MM-dd HH:mm:ss ")
+                } as LocalDateTime
+
+                if (!storageUrl.updatedAt.isAfter(clientTimeStamp)) {
+                    val jsonNode = jacksonObjectMapper.createObjectNode()
+                    jsonNode.put("status", "NOT_MODIFIED")
+                    jsonNode.put("statusCode", "304")
+                return buildResponse(304, "NOT_MODIFIED", "Requested object was not updated since $date")
+                } else {
+                    arrayNode.add(jacksonObjectMapper.valueToTree<JsonNode>(mapOf(dataType to storageUrl.url)))
+                    return ResponseEntity.ok(arrayNode)
+                }
             } else {
                 arrayNode.add(jacksonObjectMapper.valueToTree<JsonNode>(mapOf(dataType to storageUrl.url)))
-                return arrayNode
+                return ResponseEntity.ok(arrayNode)
+
             }
 
         }
+
     }
+
 
     @GetMapping("storage/read")
     open fun readAll(
@@ -147,16 +171,16 @@ open class OmemController(
     ): ResponseEntity<JsonNode> {
         val storageMeta = storageMetaRepo.findByTelematikId(telematikId)
         if (storageMeta == null) {
-            return buildResponse(400, "error", "TelematikId is not registered or does not exist")
+            return buildResponse(400, "BAD_REQUEST", "TelematikId is not registered or does not exist")
         }
 
         val apiKey = body["accessToken"].asText()
         val userApiKey = storageMeta.accessToken
         if (apiKey != userApiKey) {
-            return buildResponse(401, "error","Invalid user API key")
+            return buildResponse(401, "UNAUTHORIZED", "Invalid user API key")
         }
         if (!dataTypes.contains(dataType.uppercase(getDefault()))) {
-            return buildResponse(400, "error", "Data type $dataType is not supported")
+            return buildResponse(400, "BAD_REQUEST", "Data type $dataType is not supported")
         }
 
         val objectName = "pharmacy/${storageMeta.actorId}/$dataType"
