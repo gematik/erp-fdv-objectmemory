@@ -38,10 +38,28 @@ open class OmemController(
     private val storageUrlRepo: StorageUrlRepository,
     private val jacksonObjectMapper: ObjectMapper
 ) {
-    val storage: Storage = StorageOptions.newBuilder()
-        .setCredentials(ServiceAccountCredentials.fromStream(FileInputStream("/Users/a.ibrokhimov/Downloads/magnetic-flare-462410-t3-b2153670acce.json")))
+    val storage: Storage = initStorage()
+    val authMode = System.getenv("GCP_AUTH_MODE") ?: "manual"
+
+
+    private fun initStorage(): Storage {
+        return if (authMode == "manual") {
+            // Local: load from resource
+            val creds = ServiceAccountCredentials
+                .fromStream(FileInputStream("./src/main/resources/magnetic-flare-462410-t3-b2153670acce.json"))
+            StorageOptions.newBuilder()
+                .setCredentials(creds)
+                .build()
+                .service
+        } else {
+            // Docker or Cloud Run: use GOOGLE_APPLICATION_CREDENTIALS or ADC
+            StorageOptions.getDefaultInstance().service
+        }
+    }
+    /*val storage: Storage = StorageOptions.newBuilder()
+        .setCredentials(ServiceAccountCredentials.fromStream(FileInputStream("./src/main/resources/magnetic-flare-462410-t3-b2153670acce.json")))
         .build()
-        .service
+        .service*/
     val bucketName = "omem_bucket"
     val dataTypes: MutableList<String> =
         mutableListOf("LOGO", "TEAM_BILD", "AUSSENANSICHT", "INNENANSICHT", "INNENANSICHT_2")
@@ -121,7 +139,7 @@ open class OmemController(
                     val jsonNode = jacksonObjectMapper.createObjectNode()
                     jsonNode.put("status", "NOT_MODIFIED")
                     jsonNode.put("statusCode", "304")
-                return buildResponse(304, "NOT_MODIFIED", "Requested object was not updated since $date")
+                    return buildResponse(304, "NOT_MODIFIED", "Requested object was not updated since $date")
                 } else {
                     arrayNode.add(jacksonObjectMapper.valueToTree<JsonNode>(mapOf(dataType to storageUrl.url)))
                     return ResponseEntity.ok(arrayNode)
@@ -209,7 +227,13 @@ open class OmemController(
 
         // store URL to an image in a database for future requests
         val url = "https://storage.googleapis.com/$bucketName/pharmacy/$encodedActorId/$encodedData"
-        val storageUrl = StorageUrl(0, storageMeta, url, dataType, telematikId)
-        storageUrlRepo.save(storageUrl)
+        val oldStorageUrl = storageUrlRepo.findByUrl(url)
+        if (oldStorageUrl != null) {
+            oldStorageUrl.updatedAt = LocalDateTime.now()
+            storageUrlRepo.save(oldStorageUrl)
+        } else {
+            val storageUrl = StorageUrl(0, storageMeta, url, dataType, telematikId)
+            storageUrlRepo.save(storageUrl)
+        }
     }
 }

@@ -32,7 +32,7 @@ data class StorageUrl(
     val telematikId: String,
 
     @Column
-    val updatedAt: LocalDateTime = LocalDateTime.now()
+    var updatedAt: LocalDateTime = LocalDateTime.now()
 
     ){
     // Required by JPA

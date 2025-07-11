@@ -12,4 +12,5 @@ interface StorageUrlRepository : JpaRepository<StorageUrl, Long> {
         @Param("telematikId") telematikId: String,
         @Param("dataType") dataType: String
     ): StorageUrl?
+    fun findByUrl(@Param("url") url: String): StorageUrl?
 }
