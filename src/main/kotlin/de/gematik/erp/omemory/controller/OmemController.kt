@@ -3,7 +3,6 @@ package de.gematik.erp.omemory.controller
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.google.auth.oauth2.ServiceAccountCredentials
 import com.google.cloud.storage.BlobInfo
 import com.google.cloud.storage.HttpMethod
 import com.google.cloud.storage.Storage
@@ -22,7 +21,6 @@ import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import java.io.FileInputStream
 import java.net.URLEncoder
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -38,28 +36,8 @@ open class OmemController(
     private val storageUrlRepo: StorageUrlRepository,
     private val jacksonObjectMapper: ObjectMapper
 ) {
-    val storage: Storage = initStorage()
-    val authMode = System.getenv("GCP_AUTH_MODE") ?: "manual"
 
-
-    private fun initStorage(): Storage {
-        return if (authMode == "manual") {
-            // Local: load from resource
-            val creds = ServiceAccountCredentials
-                .fromStream(FileInputStream("./src/main/resources/magnetic-flare-462410-t3-b2153670acce.json"))
-            StorageOptions.newBuilder()
-                .setCredentials(creds)
-                .build()
-                .service
-        } else {
-            // Docker or Cloud Run: use GOOGLE_APPLICATION_CREDENTIALS or ADC
-            StorageOptions.getDefaultInstance().service
-        }
-    }
-    /*val storage: Storage = StorageOptions.newBuilder()
-        .setCredentials(ServiceAccountCredentials.fromStream(FileInputStream("./src/main/resources/magnetic-flare-462410-t3-b2153670acce.json")))
-        .build()
-        .service*/
+    val storage = StorageOptions.getDefaultInstance().service
     val bucketName = "omem_bucket"
     val dataTypes: MutableList<String> =
         mutableListOf("LOGO", "TEAM_BILD", "AUSSENANSICHT", "INNENANSICHT", "INNENANSICHT_2")
