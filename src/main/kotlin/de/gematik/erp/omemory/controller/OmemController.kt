@@ -3,6 +3,7 @@ package de.gematik.erp.omemory.controller
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.google.cloud.storage.BlobId
 import com.google.cloud.storage.BlobInfo
 import com.google.cloud.storage.HttpMethod
 import com.google.cloud.storage.Storage
@@ -14,6 +15,7 @@ import de.gematik.erp.omemory.data.StorageUrlRepository
 import de.gematik.erp.omemory.security.RequireGlobalApiKey
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -213,5 +215,35 @@ open class OmemController(
             val storageUrl = StorageUrl(0, storageMeta, url, dataType, telematikId)
             storageUrlRepo.save(storageUrl)
         }
+    }
+
+    @DeleteMapping("storage/delete")
+    open fun deleteFromBucket(@RequestParam dataType: String, @RequestParam telematikId: String, @RequestHeader("USER_ACCESS_TOKEN") accessToken: String): ResponseEntity<JsonNode> {
+        val storageMeta = storageMetaRepo.findByTelematikId(telematikId)
+        if (storageMeta == null) {
+            return buildResponse(400, "BAD_REQUEST", "TelematikId is not registered or does not exist")
+        }
+        val userApiKey = storageMeta.accessToken
+        if (accessToken!= userApiKey) {
+            return buildResponse(401, "UNAUTHORIZED", "Invalid user API key")
+        }
+        val storageUrl = storageUrlRepo.findByTelematikIdAndDataType(telematikId, dataType)
+        if (storageUrl == null) {
+            return buildResponse(
+                400,
+                "BAD_REQUEST",
+                "pharmacy with telematikId $telematikId doesn't have data of type $dataType"
+            )
+        }
+        val actorId = storageMeta.actorId
+        val encodedActorId = URLEncoder.encode(actorId, "UTF-8").replace("+", "%20")
+        val encodedData = URLEncoder.encode(dataType, "UTF-8").replace("+", "%20")
+        val objectName = "pharmacy/$encodedActorId/$encodedData"
+        val blobId = BlobId.of(bucketName, objectName)
+        //delete the file from the GCS-bucket
+        storage.delete(blobId)
+        //delete the URL of deleted file from the database
+        storageUrlRepo.delete(storageUrl)
+        return buildResponse(200, "OK", "Blob $objectName deleted")
     }
 }
