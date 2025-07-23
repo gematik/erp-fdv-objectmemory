@@ -40,7 +40,7 @@ open class OmemController(
 ) {
 
     val storage = StorageOptions.getDefaultInstance().service
-    val bucketName = "omem_bucket"
+    val bucketName = System.getenv("GCS_BUCKET_NAME")
     val dataTypes: MutableList<String> =
         mutableListOf("LOGO", "TEAM_BILD", "AUSSENANSICHT", "INNENANSICHT", "INNENANSICHT_2")
     private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
@@ -134,7 +134,7 @@ open class OmemController(
 
     }
 
-
+    @RequireGlobalApiKey
     @GetMapping("storage/read")
     open fun readAll(
         @RequestParam actorName: String,
