@@ -18,7 +18,6 @@
 
 def DEV_BRANCH = 'main'
 def BUILD_DESCRIPTION = 'SNAPSHOT BUILD'
-def dockerRegistry = "europe-west3-docker.pkg.dev/gematik-objectstore-dev"
 
 String DOCKER_LATEST_TAG = 'latest'
 String IMAGE_NAME = 'e-rezept/omem-poc'
@@ -99,7 +98,7 @@ pipeline {
                 script {
                     def buildDir = "./"
                     def dockerFile = "Dockerfile"
-                    //def dockerRegistry = dockerGetGematikRegistry()
+                    def dockerRegistry = dockerGetGematikRegistry()
                     def buildArgs = "--build-arg BUILD_DATE=${BUILD_DATE}"
                     dockerBuild(IMAGE_NAME, DOCKER_LATEST_TAG, IMAGE_VERSION, buildArgs, dockerFile, dockerRegistry, buildDir)
                 }
@@ -114,7 +113,7 @@ pipeline {
                 }
             }
             steps {
-                dockerPushImage(IMAGE_NAME, DOCKER_LATEST_TAG, '', dockerRegistry)
+                dockerPushImage(IMAGE_NAME, DOCKER_LATEST_TAG)
             }
         }
 

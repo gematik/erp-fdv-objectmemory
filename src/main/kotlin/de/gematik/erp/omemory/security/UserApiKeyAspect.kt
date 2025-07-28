@@ -1,6 +1,5 @@
 package de.gematik.erp.omemory.security
 
-import de.gematik.erp.omemory.data.StorageMetaRepository
 import jakarta.servlet.http.HttpServletRequest
 import org.aspectj.lang.annotation.Aspect
 import org.aspectj.lang.annotation.Before
@@ -18,12 +17,12 @@ import org.springframework.web.server.ResponseStatusException
 @Aspect
 @Component
 class UserApiKeyAspect(
-    @Value("\${GLOBAL_API_KEY}") private val globalApiKey: String
+    @Value("\${X-GLOBAL_ACCESS_TOKEN}") private val globalApiKey: String
 ) {
     @Before("@annotation(RequireGlobalApiKey)")
     fun checkGlobalApiKey() {
         val request = (RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes).request
-        val apiKey = request.getHeader("X-GLOBAL-API-KEY")
+        val apiKey = request.getHeader("X-GLOBAL-ACCESS-TOKEN")
 
         if (apiKey == null || apiKey != globalApiKey) {
             throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing or invalid global API key")
