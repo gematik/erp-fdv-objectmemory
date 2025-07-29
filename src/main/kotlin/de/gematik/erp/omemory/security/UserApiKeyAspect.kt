@@ -17,7 +17,7 @@ import org.springframework.web.server.ResponseStatusException
 @Aspect
 @Component
 class UserApiKeyAspect(
-    @Value("\${X-GLOBAL_ACCESS_TOKEN}") private val globalApiKey: String
+    @Value("\${X-GLOBAL-ACCESS-TOKEN}") private val globalApiKey: String
 ) {
     @Before("@annotation(RequireGlobalApiKey)")
     fun checkGlobalApiKey() {
