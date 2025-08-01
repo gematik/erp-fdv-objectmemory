@@ -8,6 +8,7 @@ import com.google.cloud.storage.BlobInfo
 import com.google.cloud.storage.HttpMethod
 import com.google.cloud.storage.Storage
 import com.google.cloud.storage.StorageOptions
+import de.gematik.erp.omemory.StorageService
 import de.gematik.erp.omemory.data.StorageMeta
 import de.gematik.erp.omemory.data.StorageMetaRepository
 import de.gematik.erp.omemory.data.StorageUrl
@@ -35,7 +36,8 @@ import java.util.concurrent.TimeUnit
 open class OmemController(
     private val storageMetaRepo: StorageMetaRepository,
     private val storageUrlRepo: StorageUrlRepository,
-    private val jacksonObjectMapper: ObjectMapper
+    private val jacksonObjectMapper: ObjectMapper,
+    private val storageService: StorageService
 ) {
 
     val storage = StorageOptions.getDefaultInstance().service
@@ -187,6 +189,7 @@ open class OmemController(
         @RequestParam actorName: String,
         @RequestParam(required = false) dataType: String?
     ): JsonNode {
+        val start = System.currentTimeMillis()
         val arrayNode = jacksonObjectMapper.createArrayNode()
         val pharmacyMap = mutableMapOf<String, MutableMap<String, String>>()
         val storageUrls: List<StorageUrl>
@@ -207,8 +210,21 @@ open class OmemController(
             val node = jacksonObjectMapper.valueToTree<JsonNode>(pharmacyEntry)
             arrayNode.add(node)
         }
+        println("TIME_IT_TOOK: ${System.currentTimeMillis() - start}ms")
         return arrayNode
     }
+
+    @GetMapping("/storage/read/efficient")
+    open fun readAllEfficient(
+        @RequestParam actorName: String,
+        @RequestParam(required = false) dataType: String?
+    ): JsonNode {
+        val start = System.currentTimeMillis()
+        val res = storageService.getEfficientJson(actorName, dataType)
+        println("TIME_IT_TOOK: ${System.currentTimeMillis() - start}ms")
+        return res
+    }
+
 
     @PutMapping("storage/signUrl")
     open fun writeToBucket(
