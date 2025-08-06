@@ -13,13 +13,13 @@ import de.gematik.erp.omemory.data.StorageMeta
 import de.gematik.erp.omemory.data.StorageMetaRepository
 import de.gematik.erp.omemory.data.StorageUrl
 import de.gematik.erp.omemory.data.StorageUrlRepository
+import de.gematik.erp.omemory.security.ApiKeyAspect
 import de.gematik.erp.omemory.security.RequireGlobalApiKey
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PutMapping
-import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -37,29 +37,15 @@ open class OmemController(
     private val storageMetaRepo: StorageMetaRepository,
     private val storageUrlRepo: StorageUrlRepository,
     private val jacksonObjectMapper: ObjectMapper,
-    private val storageService: StorageService
+    private val storageService: StorageService,
+    private val apiKeyAspect: ApiKeyAspect
 ) {
 
-    val storage = StorageOptions.getDefaultInstance().service
-    val publicBucket = System.getenv("BUCKET_NAME_PUBLIC")
-    val privateBucket = System.getenv("BUCKET_NAME_PRIVATE")
+    private val storage = StorageOptions.getDefaultInstance().service
+    private val publicBucket = System.getenv("BUCKET_NAME_PUBLIC")
+    private val privateBucket = System.getenv("BUCKET_NAME_PRIVATE")
     private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
-
-    fun buildResponse(statusCode: Int, status: String, message: String): ResponseEntity<JsonNode> {
-        val jsonNode = JsonNodeFactory.instance.objectNode()
-        jsonNode.put("status", status)
-        jsonNode.put("statusCode", statusCode)
-        jsonNode.put("message", message)
-        return ResponseEntity.status(statusCode).body(jsonNode)
-    }
-
-    fun generateRandomId(length: Int = 6): String {
-        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-        return (1..length)
-            .map { chars.random() }
-            .joinToString("")
-    }
 
     @RequireGlobalApiKey
     @PutMapping("storage/register")
@@ -92,14 +78,20 @@ open class OmemController(
         @RequestHeader(name = "X-Modified-Since", required = false) date: String?
     ): ResponseEntity<JsonNode> {
         val arrayNode = jacksonObjectMapper.createArrayNode()
-        val storageUrls: List<StorageUrl>?
+        val storageMeta = storageService.readMetaCached(telematikId)
+        if (storageMeta == null) {
+            return buildResponse(400, "BAD_REQUEST", "TelematikId is not registered or does not exist")
+        }
         return if (dataType == null) {
-            storageUrls = storageUrlRepo.findByTelematikId(telematikId).orEmpty()
-            for (storageUrl in storageUrls) {
-                arrayNode.add(jacksonObjectMapper.createObjectNode().put(storageUrl.dataType, storageUrl.url))
-            }
-            ResponseEntity.ok(arrayNode)
+            val entries = storageService.readUrlsCached(storageUrlRepo, telematikId)
+            ResponseEntity.ok(entries)
         } else {
+            val clientTimeStamp = try {
+                getClientTimeStamp(date)
+            } catch (e: DateTimeParseException) {
+                return buildResponse(400, "BAD_REQUEST", "Date format should be yyyy-MM-dd HH:mm:ss ")
+
+            }
             val storageUrl = storageUrlRepo.findByTelematikIdAndDataType(telematikId, dataType)
             if (storageUrl == null) {
                 return buildResponse(
@@ -108,79 +100,15 @@ open class OmemController(
                     "pharmacy with telematikId $telematikId doesn't have data of type $dataType"
                 )
             }
-            if (date != null) {
-                val clientTimeStamp: LocalDateTime = try {
-                    LocalDateTime.parse(date, formatter)
-                } catch (e: DateTimeParseException) {
-                    return buildResponse(400, "BAD_REQUEST", "Date format should be yyyy-MM-dd HH:mm:ss ")
-                } as LocalDateTime
-
-                if (!storageUrl.updatedAt.isAfter(clientTimeStamp)) {
-                    val jsonNode = jacksonObjectMapper.createObjectNode()
-                    jsonNode.put("status", "NOT_MODIFIED")
-                    jsonNode.put("statusCode", "304")
-                    return buildResponse(304, "NOT_MODIFIED", "Requested object was not updated since $date")
-                } else {
-                    if (dataType.uppercase() == "TEAM_BILD") {
-                        return generateSignedUrl(telematikId, dataType, "")
-                    } else {
-                        arrayNode.add(jacksonObjectMapper.valueToTree<JsonNode>(mapOf(dataType to storageUrl.url)))
-                        return ResponseEntity.ok(arrayNode)
-                    }
-                }
+            val wasUpdated = checkIfUpdated(storageUrl.updatedAt, clientTimeStamp)
+            if (!wasUpdated) {
+                return buildResponse(304, "NOT_MODIFIED", "Requested object was not updated since $date")
+            } else if (dataType.uppercase() == "TEAM_BILD") {
+                return generateSignedUrl(storageMeta.actorId, "", dataType)
             } else {
-                if (dataType.uppercase() == "TEAM_BILD") {
-                    return generateSignedUrl(telematikId, dataType, "")
-                } else {
-                    arrayNode.add(jacksonObjectMapper.valueToTree<JsonNode>(mapOf(dataType to storageUrl.url)))
-                    return ResponseEntity.ok(arrayNode)
-                }
-
+                arrayNode.add(jacksonObjectMapper.valueToTree<JsonNode>(mapOf(dataType to storageUrl.url)))
+                return ResponseEntity.ok(arrayNode)
             }
-
-        }
-
-    }
-
-    open fun generateSignedUrl(
-        telematikId: String,
-        dataType: String,
-        contentType: String
-    ): ResponseEntity<JsonNode> {
-
-        val arrayNode = jacksonObjectMapper.createArrayNode()
-        val storageMeta = storageMetaRepo.findByTelematikId(telematikId)
-        if (storageMeta == null) {
-            return buildResponse(400, "BAD_REQUEST", "TelematikId is not registered or does not exist")
-        }
-        val objectName = "pharmacy/${storageMeta.actorId}/$dataType"
-        var bucketName = publicBucket
-        if (dataType.uppercase() == "TEAM_BILD") {
-            bucketName = privateBucket
-        }
-
-        if (contentType.isEmpty()) {
-            val blobInfo = BlobInfo.newBuilder(bucketName, objectName).build()
-            val signedURL = storage.signUrl(
-                blobInfo,
-                30, TimeUnit.MINUTES,
-                Storage.SignUrlOption.httpMethod(HttpMethod.GET),
-                Storage.SignUrlOption.withV4Signature()
-            )
-            arrayNode.add(jacksonObjectMapper.valueToTree<JsonNode>(mapOf(dataType to signedURL)))
-            return ResponseEntity.ok(arrayNode)
-        } else {
-            val blobInfo = BlobInfo.newBuilder(bucketName, objectName).setContentType(contentType).build()
-            val signedURL = storage.signUrl(
-                blobInfo,
-                15, TimeUnit.MINUTES,
-                Storage.SignUrlOption.httpMethod(HttpMethod.PUT),
-                Storage.SignUrlOption.withV4Signature(),
-                Storage.SignUrlOption.withContentType()
-            )
-            val jsonNode = JsonNodeFactory.instance.objectNode()
-            jsonNode.put("signedUrl", signedURL.toString())
-            return ResponseEntity.ok(jsonNode)
         }
     }
 
@@ -220,33 +148,30 @@ open class OmemController(
         @RequestParam(required = false) dataType: String?
     ): JsonNode {
         val start = System.currentTimeMillis()
-        val res = storageService.getEfficientJson(actorName, dataType)
+        val res = storageService.readAllCached(actorName, dataType)
         println("TIME_IT_TOOK: ${System.currentTimeMillis() - start}ms")
         return res
     }
 
 
     @PutMapping("storage/signUrl")
-    open fun writeToBucket(
-        @RequestParam dataType: String, @RequestParam("telematikId") telematikId: String, @RequestBody body: JsonNode,
+    open fun signUrl(
+        @RequestParam dataType: String,
+        @RequestParam("telematikId") telematikId: String,
+        @RequestParam contentType: String,
     ): ResponseEntity<JsonNode> {
-        val storageMeta = storageMetaRepo.findByTelematikId(telematikId)
+        val storageMeta = storageService.readMetaCached(telematikId)
         if (storageMeta == null) {
             return buildResponse(400, "BAD_REQUEST", "TelematikId is not registered or does not exist")
         }
-
-        val apiKey = body["accessToken"].asText()
-        val userApiKey = storageMeta.accessToken
-        if (apiKey != userApiKey) {
-            return buildResponse(401, "UNAUTHORIZED", "Invalid user API key")
-        }
-        val contentType = body["contentType"].toString().trim('"')
-        return generateSignedUrl(telematikId, dataType, contentType)
+        apiKeyAspect.checkUserApiKey(storageMeta)
+        return generateSignedUrl(storageMeta.actorId, contentType, dataType)
     }
 
     @PutMapping("storage/confirm-upload")
     open fun confirmUpload(@RequestParam telematikId: String, @RequestParam dataType: String) {
-        val storageMeta = storageMetaRepo.findByTelematikId(telematikId)!!
+        val storageMeta = storageService.readMetaCached(telematikId)!!
+        apiKeyAspect.checkUserApiKey(storageMeta)
         val actorId = storageMeta.actorId
 
         val encodedActorId = URLEncoder.encode(actorId, "UTF-8").replace("+", "%20")
@@ -270,17 +195,13 @@ open class OmemController(
     @DeleteMapping("storage/delete")
     open fun deleteFromBucket(
         @RequestParam dataType: String,
-        @RequestParam telematikId: String,
-        @RequestHeader("X-USER_ACCESS_TOKEN") accessToken: String
+        @RequestParam telematikId: String
     ): ResponseEntity<JsonNode> {
-        val storageMeta = storageMetaRepo.findByTelematikId(telematikId)
+        val storageMeta = storageService.readMetaCached(telematikId)
         if (storageMeta == null) {
             return buildResponse(400, "BAD_REQUEST", "TelematikId is not registered or does not exist")
         }
-        val userApiKey = storageMeta.accessToken
-        if (accessToken != userApiKey || accessToken.isEmpty()) {
-            return buildResponse(401, "UNAUTHORIZED", "Invalid user API key")
-        }
+        apiKeyAspect.checkUserApiKey(storageMeta)
         val storageUrl = storageUrlRepo.findByTelematikIdAndDataType(telematikId, dataType)
         if (storageUrl == null) {
             return buildResponse(
@@ -301,12 +222,71 @@ open class OmemController(
         return buildResponse(200, "OK", "Blob $objectName deleted")
     }
 
-    open fun getBucketName(dataType: String): String {
+    private fun getBucketName(dataType: String): String {
         return if (dataType.uppercase() == "TEAM_BILD") {
             privateBucket
         } else {
             publicBucket
         }
 
+    }
+
+    private fun buildResponse(statusCode: Int, status: String, message: String): ResponseEntity<JsonNode> {
+        val jsonNode = JsonNodeFactory.instance.objectNode()
+        jsonNode.put("status", status)
+        jsonNode.put("statusCode", statusCode)
+        jsonNode.put("message", message)
+        return ResponseEntity.status(statusCode).body(jsonNode)
+    }
+
+    private fun generateRandomId(length: Int = 6): String {
+        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        return (1..length)
+            .map { chars.random() }
+            .joinToString("")
+    }
+
+    private fun checkIfUpdated(updatedAt: LocalDateTime, clientTimeStamp: LocalDateTime): Boolean {
+        return updatedAt.isAfter(clientTimeStamp)
+    }
+
+    private fun getClientTimeStamp(date: String?): LocalDateTime {
+        if (date != null) {
+            val res = LocalDateTime.parse(date, formatter)
+            return res
+        }
+        return LocalDateTime.MIN
+    }
+
+    private fun generateSignedUrl(actorId: String, contentType: String, dataType: String): ResponseEntity<JsonNode> {
+        val arrayNode = jacksonObjectMapper.createArrayNode()
+        val objectName = "pharmacy/$actorId/$dataType"
+        var bucketName = publicBucket
+        if (dataType.uppercase() == "TEAM_BILD") {
+            bucketName = privateBucket
+        }
+        if (contentType.isEmpty()) {
+            val blobInfo = BlobInfo.newBuilder(bucketName, objectName).build()
+            val signedURL = storage.signUrl(
+                blobInfo,
+                30, TimeUnit.MINUTES,
+                Storage.SignUrlOption.httpMethod(HttpMethod.GET),
+                Storage.SignUrlOption.withV4Signature()
+            )
+            arrayNode.add(jacksonObjectMapper.valueToTree<JsonNode>(mapOf(dataType to signedURL)))
+            return ResponseEntity.ok(arrayNode)
+        } else {
+            val blobInfo = BlobInfo.newBuilder(bucketName, objectName).setContentType(contentType).build()
+            val signedURL = storage.signUrl(
+                blobInfo,
+                15, TimeUnit.MINUTES,
+                Storage.SignUrlOption.httpMethod(HttpMethod.PUT),
+                Storage.SignUrlOption.withV4Signature(),
+                Storage.SignUrlOption.withContentType()
+            )
+            val jsonNode = JsonNodeFactory.instance.objectNode()
+            jsonNode.put("signedUrl", signedURL.toString())
+            return ResponseEntity.ok(jsonNode)
+        }
     }
 }

@@ -2,6 +2,8 @@ package de.gematik.erp.omemory
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import de.gematik.erp.omemory.data.StorageMeta
+import de.gematik.erp.omemory.data.StorageMetaRepository
 import de.gematik.erp.omemory.data.StorageUrlRepository
 import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
@@ -9,12 +11,12 @@ import org.springframework.stereotype.Service
 @Service
 open class StorageService(
     private val storageUrlRepo: StorageUrlRepository,
-    private val jacksonObjectMapper: ObjectMapper
+    private val jacksonObjectMapper: ObjectMapper,
+    private val storageMetaRepo: StorageMetaRepository,
 ) {
 
-    @Cacheable("readAllCached")
-    open fun getEfficientJson(actorName: String, dataType: String?): JsonNode {
-        println("🚨 Cache MISS for actorName=$actorName, dataType=$dataType")
+    @Cacheable("readAllUrlsCached")
+    open fun readAllCached(actorName: String, dataType: String?): JsonNode {
         val storageUrls = if (dataType == null) {
             storageUrlRepo.findAll()
         } else {
@@ -33,5 +35,21 @@ open class StorageService(
         }
 
         return jacksonObjectMapper.valueToTree(outputList)
+    }
+    @Cacheable("readUrlsCached")
+    open fun readUrlsCached(storageUrlRepo: StorageUrlRepository, telematikId: String): JsonNode {
+        println("SHOULD PRINT URLS THE FIRST TIME")
+        val arrayNode = jacksonObjectMapper.createArrayNode()
+        val storageUrls = storageUrlRepo.findByTelematikId(telematikId).orEmpty()
+        for (storageUrl in storageUrls) {
+            arrayNode.add(jacksonObjectMapper.createObjectNode().put(storageUrl.dataType, storageUrl.url))
+        }
+        return arrayNode
+    }
+
+    @Cacheable("readMetaCached")
+    open fun readMetaCached(telematikId: String): StorageMeta? {
+        println("SHOULD PRINT META THE FIRST TIME")
+        return storageMetaRepo.findByTelematikId(telematikId)
     }
 }

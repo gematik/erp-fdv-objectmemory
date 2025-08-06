@@ -1,5 +1,7 @@
 package de.gematik.erp.omemory.security
 
+import de.gematik.erp.omemory.data.StorageMeta
+import de.gematik.erp.omemory.data.StorageMetaRepository
 import jakarta.servlet.http.HttpServletRequest
 import org.aspectj.lang.annotation.Aspect
 import org.aspectj.lang.annotation.Before
@@ -16,7 +18,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Aspect
 @Component
-class UserApiKeyAspect(
+class ApiKeyAspect(
     @Value("\${X-GLOBAL-ACCESS-TOKEN}") private val globalApiKey: String
 ) {
     @Before("@annotation(RequireGlobalApiKey)")
@@ -29,9 +31,21 @@ class UserApiKeyAspect(
         }
     }
 
+    fun checkUserApiKey(storageMeta: StorageMeta) {
+        val request = (RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes).request
+        val apiKey = request.getHeader("X-USER-ACCESS-TOKEN")
+
+        val userApiKey = storageMeta.accessToken
+        if (apiKey != userApiKey || apiKey.isEmpty()) {
+            throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing or invalid user API key")
+        }
+
+    }
+
 }
+
 @ControllerAdvice
-class GlobalExceptionHandler{
+class GlobalExceptionHandler {
     @ExceptionHandler(ResponseStatusException::class)
     fun handleResponseStatusException(
         ex: ResponseStatusException,
