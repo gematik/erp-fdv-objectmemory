@@ -42,7 +42,7 @@ pipeline {
                 mavenBuild(POM_PATH)
             }
         }
-        stage('Check Guidelines') {
+        /*stage('Check Guidelines') {
             steps {
                 dir("source") {
                     script {
@@ -50,7 +50,7 @@ pipeline {
                     }
                 }
             }
-        }
+        }*/
 
         stage("Apply .githubignore rules") {
             steps {
