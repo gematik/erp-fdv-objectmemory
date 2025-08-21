@@ -3,7 +3,7 @@
 # E-Rezept FdV Object Memory
 
 <!-- TOC -->
-* [E-Rezept FdV Test Driver Interface](#e-rezept-fdv-test-driver-interface)
+* [E-Rezept FdV Object Memory](#e-rezept-fdv-test-driver-interface)
   * [About The Project](#about-the-project)
     * [Release Notes](#release-notes)
   * [Contributing](#contributing)
