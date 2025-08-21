@@ -1,0 +1,387 @@
+openapi: 3.0.3
+info:
+  title: "E-Rezept Object Memory"
+  description: "REST interface to access/update/delete images from Cloud Storage Bucket."
+  version: 1.0.0
+  contact:
+    name: gematik GmbH
+    email: software-development@gematik.de
+    url: https://www.gematik.de
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+tags:
+  - name: Register
+    description: "Operation to register with telematikId and global access token"
+  - name: Image
+    description: "Operations for retrieving, uploading and deleting images"
+  - name: Confirmation
+    description: "Operation to confirm successful upload"
+
+
+paths:
+  /erp/storage/register:
+    put:
+      summary: "Register to get user access token"
+      tags:
+        - Register
+      parameters:
+        - name: actorName
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Actor"
+        - name: telematikId
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/TelematikId"
+        - name: GLOBAL_ACCESS_TOKEN
+          in: header
+          required: true
+          schema:
+            type: string
+            description: global access token to use the service
+            example: "gematik2025"
+      responses:
+        200:
+          $ref: "#/components/responses/UserAccessToken"
+        401:
+          $ref: "#/components/responses/UnauthorizedGlobal"
+  /erp/storage/read:
+    get:
+      summary: "Retrieve images of all actors"
+      tags:
+        - Image
+      parameters:
+        - name: actorName
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Actor"
+        - name: dataType
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ImageType"
+      responses:
+        200:
+          $ref: "#/components/responses/ImagesArray"
+        400:
+          $ref: "#/components/responses/ActorNotFound"
+  /erp/storage/readById:
+    get:
+      summary: "Retrieve images of one actor"
+      tags:
+        - Image
+      parameters:
+        - name: actorName
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Actor"
+        - name: telematikId
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/TelematikId"
+        - name: dataType
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ImageType"
+        - name: X-Modified-Since
+          in: header
+          required: false
+          schema:
+            type: string
+            example: "2025-07-26 12:30:00"
+      responses:
+        200:
+          $ref: "#/components/responses/Images"
+        400:
+          $ref: "#/components/responses/TelematikIdNotFound"
+        401:
+          $ref: "#/components/responses/UnauthorizedGlobal"
+        304:
+          $ref: "#/components/responses/NotModified"
+  /erp/storage/signUrl:
+    put:
+      summary: "Request signed URL to retrive/upload image"
+      tags:
+        - Image
+      parameters:
+        - name: telematikId
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/TelematikId"
+        - name: dataType
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/ImageType"
+        - name: contentType
+          in: query
+          required: true
+          schema:
+            type: string
+            example: PNG
+        - name: USER_ACCESS_TOKEN
+          in: header
+          required: true
+          schema:
+            $ref: "#/components/schemas/UserAccessToken"
+      responses:
+        200:
+          $ref: "#/components/responses/SignedUrl"
+        400:
+          $ref: "#/components/responses/TelematikIdNotFound"
+        401:
+          $ref: "#/components/responses/UnauthorizedUser"
+  /erp/storage/delete:
+    delete:
+      summary: "delete an image from Cloud Storage"
+      tags:
+        - Image
+      parameters:
+        - name: telematikId
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/TelematikId"
+        - name: dataType
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/ImageType"
+        - name: USER_ACCESS_TOKEN
+          in: header
+          required: true
+          schema:
+            $ref: "#/components/schemas/UserAccessToken"
+      responses:
+        200:
+          $ref: "#/components/responses/Deleted"
+        400:
+          $ref: "#/components/responses/TelematikIdNotFound"
+        401:
+          $ref: "#/components/responses/UnauthorizedUser"
+  /erp/storage/confirm:
+    put:
+      summary: "confirm successfull upload to Cloud Storage"
+      tags:
+        - Confirmation
+      parameters:
+        - name: telematikId
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/TelematikId"
+        - name: dataType
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/ImageType"
+        - name: USER_ACCESS_TOKEN
+          in: header
+          required: true
+          schema:
+            $ref: "#/components/schemas/UserAccessToken"
+      responses:
+        202:
+          description: Accepted
+        400:
+          $ref: "#/components/responses/TelematikIdNotFound"
+        401:
+          $ref: "#/components/responses/UnauthorizedUser"
+
+components:
+  responses:
+    UserAccessToken:
+      description: "unique access token for writing to Cloud Storage"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserAccessToken'
+    ActorNotFound:
+      description: "returns 400 if given actor is either invalid or does not exist in the system"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: number
+                example: 400
+              error:
+                type: string
+                example: "BAD_REQUEST"
+              message:
+                type: string
+                example: "given actor not found"
+    TelematikIdNotFound:
+      description: "returns 400 if given telematikId is either invalid or does not exist in the system"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: number
+                example: 400
+              error:
+                type: string
+                example: "BAD_REQUEST"
+              message:
+                type: string
+                example: "Given telematikId is either invalid or not registered in the system"
+    UnauthorizedGlobal:
+      description: "returns 401 if global access token is missing or invalid"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: number
+                example: 401
+              error:
+                type: string
+                example: "UNAUTHORIZED"
+              message:
+                type: string
+                example: "Missing or invalid global access token"
+    UnauthorizedUser:
+      description: "returns 401 if user access token is missing or invalid"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: number
+                example: 401
+              error:
+                type: string
+                example: "UNAUTHORIZED"
+              message:
+                type: string
+                example: "Missing or invalid user access token"
+    NotModified:
+      description: "returns 304 if the requested object was not modified since given date"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: number
+                example: 304
+              error:
+                type: string
+                example: "NOT_MODIFIED"
+              message:
+                type: string
+                example: "Requested object was not modified since given date"
+    Deleted:
+      description: "Successfully deleted the image"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: number
+                example: 200
+              error:
+                type: string
+                example: "OK"
+              message:
+                type: string
+                example: "Blob pharmacy/gvsF2a/AUSSENANSICHT deleted"
+            required:
+              - status
+              - error
+              - message
+    ImagesArray:
+      description: list of URLs to images of one all pharmacies
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/Images"
+    Images:
+      description: list of URLs to images of one pharmacy
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Images"
+    SignedUrl:
+      description: signed URL for retrieving / uploading to Cloud Storage
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SignedUrl"
+
+
+  schemas:
+    Actor:
+      type: string
+      description: actor willing to use the service
+      example: "pharmacy"
+    TelematikId:
+      type: string
+      description: "Telematik ID of the actor"
+      example: "1-SMC-B-Test123"
+    UserAccessToken:
+      type: string
+      description: unique access token for writing to Cloud Storage
+      example: "7a1dce89-3fa7-4f7b85e9-b703cdb02707"
+    SignedUrl:
+      type: object
+      description: "signed URL to retrieve/upload to Cloud Storage"
+      properties:
+        dataType:
+          type: string
+          example: "TEAM_BILD"
+        signedURL:
+          type: string
+          example: "https://storage.googleapis.com/omem_bucket_private/pharmacy/35v2A3/TEAM_BILD?X-Goog-
+Algorithm=G00G4-RSA-SHA256&X-Goog-Credential=omem-admin%40magnetic-flare-462410-t3.iam.gserviceaccount. com%2F20250727%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20250727T190936Z&X-Goog-Expires=18008X-Goog-SignedHeaders=host&X-Goog-
+  Signature=69580485c55ea65ceba696dd0b83bc21fc97c08f9898731c8156bf1f2355c53a665ab20cb0b53318d1d940c7decec7a2ff069960f6296e92a1f
+  daeb15154b17dc0315ba25cf5ef35fdd0d7aefc60447301b79f685b079d9b4807c93e91bcffde4d5bae4202b04935102205e368aed064484cace70781dd4a
+3239bb460101c25936f0e9abee775042f44a5d2693df11bbef7f5ebea6823d8afcfc8192b512d6f37aed077d29bfba28d685e2d97080c6a7ca99d402921a3
+59dc8cacc6042f8f76394c77b76b702a35c0e2d234eb662af5c4f2eeb19359316358cbc6eabb999addcac44229c0a8655bdd432c3ed901ec268e5b12a63a3
+0f9600228cf90ffec60e56"
+    ImageType:
+      type: string
+      enum: ["AUSSENANSICHT", "INNENANSICHT_1", "INNENANSICHT_2", "LOGO", "TEAM_BILD"]
+      example: "AUSSENANSICHT"
+    Images:
+      type: object
+      properties:
+        actorName:
+          type: string
+          example: Rathaus Apotheke
+        telematikId:
+          type: string
+          example: "1-SMC-B-Test123"
+        AUSSENANSICHT:
+          type: string
+          example: "https://storage.googleapis.com/omem_bucket/pharmacy/gvsF2a/aussenansicht"
+        INNENANSICHT_1:
+          type: string
+          example: "https://storage-googleapis.com/omem_bucket/pharmacy/gvsF2a/innenansicht1"
+        INNENANSICHT_2:
+          type: string
+          example: "https://storage-googleapis.com/omem_bucket/pharmacy/gvsF2a/innenansicht2"
+        LOGO:
+          type: string
+          example: "https://storage-googleapis.com/omem_bucket/pharmacy/gvsF2a/logo"
+        TEAM_BILD:
+          type: string
+          example: "-"
+

@@ -52,7 +52,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 @RestController
-@RequestMapping("erp/omem")
+@RequestMapping("erp")
 open class OmemController(
     private val storageMetaRepo: StorageMetaRepository,
     private val storageUrlRepo: StorageUrlRepository,
@@ -65,6 +65,7 @@ open class OmemController(
     private val publicBucket = System.getenv("BUCKET_NAME_PUBLIC")
     private val privateBucket = System.getenv("BUCKET_NAME_PRIVATE")
     private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+    private val dataTypes= mutableListOf("AUSSENANSICHT", "INNENANSICHT_1", "INNENANSICHT_2", "TEAM_BILD", "LOGO")
 
 
     @RequireGlobalApiKey
@@ -133,42 +134,18 @@ open class OmemController(
     }
 
     @GetMapping("storage/read")
-    open fun readAll(
-        @RequestParam actorName: String,
-        @RequestParam(required = false) dataType: String?
-    ): JsonNode {
-        val arrayNode = jacksonObjectMapper.createArrayNode()
-        val pharmacyMap = mutableMapOf<String, MutableMap<String, String>>()
-        val storageUrls: List<StorageUrl>
-        if (dataType == null) {
-            storageUrls = storageUrlRepo.findAll()
-        } else {
-            storageUrls = storageUrlRepo.findByDataType(dataType)!!
-        }
-        for (storageUrl in storageUrls) {
-            val imageMap = pharmacyMap.getOrPut(storageUrl.telematikId) {
-                mutableMapOf("pharmacy" to storageUrl.telematikId)
-            }
-            imageMap[storageUrl.dataType] = storageUrl.url
-        }
-
-        // Convert to JsonNode
-        for (pharmacyEntry in pharmacyMap.values) {
-            val node = jacksonObjectMapper.valueToTree<JsonNode>(pharmacyEntry)
-            arrayNode.add(node)
-        }
-        return arrayNode
-    }
-
-    @GetMapping("/storage/read/efficient")
     open fun readAllEfficient(
         @RequestParam actorName: String,
         @RequestParam(required = false) dataType: String?
-    ): JsonNode {
-        val start = System.currentTimeMillis()
+    ): ResponseEntity<JsonNode> {
+        if(actorName != "pharmacy"){
+            return buildResponse(400, "BAD_REQUEST", "actor $actorName not found")
+        }
+        if (dataType != null && !dataTypes.contains(dataType.uppercase())) {
+            return buildResponse(400, "BAD_REQUEST", "Data type $dataType is not supported")
+        }
         val res = storageService.readAllCached(actorName, dataType)
-        println("TIME_IT_TOOK: ${System.currentTimeMillis() - start}ms")
-        return res
+        return ResponseEntity.ok(res)
     }
 
 
