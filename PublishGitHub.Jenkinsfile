@@ -37,7 +37,13 @@ pipeline {
                 }
             }
         }
-
+        stage("Apply .githubignore rules") {
+            steps {
+                dir("target") {
+                    sh(libraryResource('applyGithubIgnoreRules.sh'))
+                }
+            }
+        }
 
         stage('Checkout Branch GitLab') {
             steps {
