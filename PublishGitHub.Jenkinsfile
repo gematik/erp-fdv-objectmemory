@@ -69,6 +69,15 @@ pipeline {
                 }
             }
         }
+        stage('Push to GitHub') {
+            steps {
+                dir("target") {
+                    gitSetCommitter(COMMITTER_NAME, COMMITTER_EMAIL)
+                    gitCommitAndTag("Release 1.0.0", "NO_TAG1", COMMITTER_NAME, COMMITTER_EMAIL, false, true)
+                }
+            }
+        }
+
     }
 
     post {

@@ -81,7 +81,7 @@ open class OmemController(
             try {
                 val storageMeta = StorageMeta(0, id, name, telematikId, accessToken)
                 storageMetaRepo.save(storageMeta)
-                return buildResponse(200, "OK", "Here is your user AccessToken: $accessToken")
+                return buildResponse(200, "OK", "USER_ACCESS_TOKEN: $accessToken")
             } catch (ex: DataIntegrityViolationException) {
                 println("Collision detected for id=$id, retrying...")
             }
@@ -137,7 +137,6 @@ open class OmemController(
         @RequestParam actorName: String,
         @RequestParam(required = false) dataType: String?
     ): JsonNode {
-        val start = System.currentTimeMillis()
         val arrayNode = jacksonObjectMapper.createArrayNode()
         val pharmacyMap = mutableMapOf<String, MutableMap<String, String>>()
         val storageUrls: List<StorageUrl>
@@ -158,7 +157,6 @@ open class OmemController(
             val node = jacksonObjectMapper.valueToTree<JsonNode>(pharmacyEntry)
             arrayNode.add(node)
         }
-        println("TIME_IT_TOOK: ${System.currentTimeMillis() - start}ms")
         return arrayNode
     }
 
