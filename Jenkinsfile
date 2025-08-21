@@ -73,21 +73,6 @@ pipeline {
                 mavenTest()
             }
         }
-        /*stage('sonar') {
-            steps {
-                mavenCheckWithSonarQube()
-            }
-        }*/
-        /*stage ('deploy to nexus') {
-            when {
-                anyOf {
-                    branch DEV_BRANCH
-                }
-            }
-            steps {
-                mavenDeploy()
-            }
-        }*/
         stage('Docker Build') {
             when {
                 anyOf {

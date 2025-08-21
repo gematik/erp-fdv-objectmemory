@@ -28,22 +28,6 @@ pipeline {
                 gitSetIdentity()
             }
         }
-        stage('Check Guidelines') {
-            steps {
-                dir("source") {
-                    script {
-                        openSourceGuidelineCheck()
-                    }
-                }
-            }
-        }
-        stage("Apply .githubignore rules") {
-            steps {
-                dir("target") {
-                    sh(libraryResource('applyGithubIgnoreRules.sh'))
-                }
-            }
-        }
 
         stage('Checkout Branch GitLab') {
             steps {
@@ -56,6 +40,23 @@ pipeline {
         stage('Build Object Memory') {
             steps {
                 mavenBuild(POM_PATH)
+            }
+        }
+        stage('Check Guidelines') {
+            steps {
+                dir("source") {
+                    script {
+                        openSourceGuidelineCheck()
+                    }
+                }
+            }
+        }
+
+        stage("Apply .githubignore rules") {
+            steps {
+                dir("target") {
+                    sh(libraryResource('applyGithubIgnoreRules.sh'))
+                }
             }
         }
 
