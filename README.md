@@ -3,7 +3,7 @@
 # E-Rezept-App Object Memory
 
 <!-- TOC -->
-* [E-Rezept-App ObjectMemory](#e-rezept-fdv-test-driver-interface)
+* [E-Rezept-App Object Memory](#e-rezept-fdv-test-driver-interface)
   * [About The Project](#about-the-project)
     * [Release Notes](#release-notes)
   * [Contributing](#contributing)
@@ -14,7 +14,7 @@
 
 ## About The Project
 
-E-Rezept FdV Object Memory provides a Backend that communicates with Cloud Storage and Cloud SQL in Google Cloud to upload and retrieve binary data. The service should be used by E-Rezept-App that retrieves binary data (e.g. logo or outside view of the pharmacy) and shows it in the pharmcy list in the app.
+E-Rezept-App Object Memory provides a Backend Service which communicates with Cloud Storage and Cloud SQL in Google Cloud to upload and download images. The service will be used by E-Rezept-App for dynamically retrieving images from Cloud Storage (e.g. logo or outside view of the pharmacy) and displaying them in the pharmacy list of the app.
 
 ### Release Notes
 
