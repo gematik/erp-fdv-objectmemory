@@ -24,8 +24,8 @@ LABEL de.gematik.version=$VERSION
 RUN apt-get update \
     && apt-get upgrade -y \
     && apt-get install -y curl \
-    && groupadd -g $GID $GROUP \
-    && useradd -m -d $USER_HOME -g $GROUP -u $UID $USER
+    && groupadd -g ${GID} ${GROUP} \
+    && useradd -m -d ${USER_HOME} -g ${GROUP} -u ${UID} ${USER}
 
 
 USER omem
