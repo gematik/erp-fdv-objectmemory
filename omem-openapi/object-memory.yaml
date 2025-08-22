@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: "E-Rezept-App  Object Memory"
-  description: "REST interface to upload/retrieve/delete images from Cloud Storage."
+  description: "REST interface to upload/retrieve/delete images from Google Cloud Storage."
   version: 1.0.0
   contact:
     name: gematik GmbH
@@ -15,7 +15,7 @@ tags:
   - name: Register
     description: "Operation to register with telematikId and global access token"
   - name: Image
-    description: "Operations for retrieving, uploading and deleting images"
+    description: "Operations to retrieve, upload and delete images"
   - name: Confirmation
     description: "Operation to confirm successful upload"
 
@@ -41,9 +41,7 @@ paths:
           in: header
           required: true
           schema:
-            type: string
-            description: global access token to use the service
-            example: "gematik2025"
+            $ref: "#/components/schemas/GlobalAccessToken"
       responses:
         200:
           $ref: "#/components/responses/UserAccessToken"
@@ -108,7 +106,7 @@ paths:
           $ref: "#/components/responses/NotModified"
   /erp/storage/signUrl:
     put:
-      summary: "Request signed URL to retrive/upload image"
+      summary: "Request signed URL to retrieve/upload image"
       tags:
         - Image
       parameters:
@@ -170,7 +168,7 @@ paths:
           $ref: "#/components/responses/UnauthorizedUser"
   /erp/storage/confirm:
     put:
-      summary: "confirm successfull upload to Cloud Storage"
+      summary: "confirm successful upload to Cloud Storage"
       tags:
         - Confirmation
       parameters:
@@ -191,7 +189,7 @@ paths:
             $ref: "#/components/schemas/UserAccessToken"
       responses:
         202:
-          description: Accepted
+          description: accepted
         400:
           $ref: "#/components/responses/TelematikIdNotFound"
         401:
@@ -200,13 +198,13 @@ paths:
 components:
   responses:
     UserAccessToken:
-      description: "unique access token for writing to Cloud Storage"
+      description: user access token for uploading to Cloud Storage
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/UserAccessToken'
     ActorNotFound:
-      description: "returns 400 if given actor is either invalid or does not exist in the system"
+      description: given actor is either invalid or is not registered in the system
       content:
         application/json:
           schema:
@@ -222,7 +220,7 @@ components:
                 type: string
                 example: "given actor not found"
     TelematikIdNotFound:
-      description: "returns 400 if given telematikId is either invalid or does not exist in the system"
+      description: given telematikId is either invalid or does not exist in the system
       content:
         application/json:
           schema:
@@ -238,7 +236,7 @@ components:
                 type: string
                 example: "Given telematikId is either invalid or not registered in the system"
     UnauthorizedGlobal:
-      description: "returns 401 if global access token is missing or invalid"
+      description: global access token is missing or invalid
       content:
         application/json:
           schema:
@@ -254,7 +252,7 @@ components:
                 type: string
                 example: "Missing or invalid global access token"
     UnauthorizedUser:
-      description: "returns 401 if user access token is missing or invalid"
+      description: user access token is missing or invalid
       content:
         application/json:
           schema:
@@ -270,7 +268,7 @@ components:
                 type: string
                 example: "Missing or invalid user access token"
     NotModified:
-      description: "returns 304 if the requested object was not modified since given date"
+      description: requested object was not modified since given date
       content:
         application/json:
           schema:
@@ -286,7 +284,7 @@ components:
                 type: string
                 example: "Requested object was not modified since given date"
     Deleted:
-      description: "Successfully deleted the image"
+      description: successfully deleted
       content:
         application/json:
           schema:
@@ -306,7 +304,7 @@ components:
               - error
               - message
     ImagesArray:
-      description: list of URLs to images of one all pharmacies
+      description: array of URLs to images of all pharmacies
       content:
         application/json:
           schema:
@@ -320,7 +318,7 @@ components:
           schema:
             $ref: "#/components/schemas/Images"
     SignedUrl:
-      description: signed URL for retrieving / uploading to Cloud Storage
+      description: signed URL for retrieving/uploading to Cloud Storage
       content:
         application/json:
           schema:
@@ -334,15 +332,18 @@ components:
       example: "pharmacy"
     TelematikId:
       type: string
-      description: "Telematik ID of the actor"
+      description: TelematikID of the actor
       example: "1-SMC-B-Test123"
     UserAccessToken:
       type: string
-      description: unique access token for writing to Cloud Storage
       example: "7a1dce89-3fa7-4f7b85e9-b703cdb02707"
+    GlobalAccessToken:
+      type: string
+      description: access token to register/read from Cloud Storage
+      example: "q7T8nFzj8uQ6WyTg5kz0hQ"
     SignedUrl:
       type: object
-      description: "signed URL to retrieve/upload to Cloud Storage"
+      description: signed URL to retrieve from/upload to Cloud Storage
       properties:
         dataType:
           type: string
@@ -374,13 +375,13 @@ Algorithm=G00G4-RSA-SHA256&X-Goog-Credential=omem-admin%40magnetic-flare-462410-
           example: "https://storage.googleapis.com/omem_bucket/pharmacy/gvsF2a/aussenansicht"
         INNENANSICHT_1:
           type: string
-          example: "https://storage-googleapis.com/omem_bucket/pharmacy/gvsF2a/innenansicht1"
+          example: "https://storage.googleapis.com/omem_bucket/pharmacy/gvsF2a/innenansicht1"
         INNENANSICHT_2:
           type: string
-          example: "https://storage-googleapis.com/omem_bucket/pharmacy/gvsF2a/innenansicht2"
+          example: "https://storage.googleapis.com/omem_bucket/pharmacy/gvsF2a/innenansicht2"
         LOGO:
           type: string
-          example: "https://storage-googleapis.com/omem_bucket/pharmacy/gvsF2a/logo"
+          example: "https://storage.googleapis.com/omem_bucket/pharmacy/gvsF2a/logo"
         TEAM_BILD:
           type: string
           example: "-"
