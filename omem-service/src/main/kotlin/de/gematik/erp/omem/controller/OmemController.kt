@@ -83,7 +83,7 @@ open class OmemController(
                 val storageMeta = StorageMeta(0, id, name, telematikId, accessToken)
                 storageMetaRepo.save(storageMeta)
                 return buildResponse(200, "OK", "USER_ACCESS_TOKEN: $accessToken")
-            } catch (ex: DataIntegrityViolationException) {
+            } catch (_: DataIntegrityViolationException) {
                 println("Collision detected for id=$id, retrying...")
             }
         }
@@ -109,7 +109,7 @@ open class OmemController(
         } else {
             val clientTimeStamp = try {
                 getClientTimeStamp(date)
-            } catch (e: DateTimeParseException) {
+            } catch (_: DateTimeParseException) {
                 return buildResponse(400, "BAD_REQUEST", "Date format should be yyyy-MM-dd HH:mm:ss ")
 
             }
@@ -261,6 +261,7 @@ open class OmemController(
             bucketName = privateBucket
         }
         if (contentType.isEmpty()) {
+            //generate signed URL to read from a bucket
             val blobInfo = BlobInfo.newBuilder(bucketName, objectName).build()
             val signedURL = storage.signUrl(
                 blobInfo,
@@ -271,6 +272,7 @@ open class OmemController(
             arrayNode.add(jacksonObjectMapper.valueToTree<JsonNode>(mapOf(dataType to signedURL)))
             return ResponseEntity.ok(arrayNode)
         } else {
+            //generate signed URL to write to a bucket
             val blobInfo = BlobInfo.newBuilder(bucketName, objectName).setContentType(contentType).build()
             val signedURL = storage.signUrl(
                 blobInfo,
