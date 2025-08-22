@@ -28,4 +28,53 @@
         <jacoco-maven-plugin.version>0.8.11</jacoco-maven-plugin.version>
         <version.spotless>2.41.1</version.spotless>
     </properties>
+
+    <build>
+        <sourceDirectory>src/main/kotlin</sourceDirectory>
+        <testSourceDirectory>src/test/kotlin</testSourceDirectory>
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>${version.spotless}</version>
+                <configuration>
+                    <kotlin>
+                        <!-- make sure every file has the following copyright header.
+                          optionally, Spotless can set copyright years by digging
+                          through git history (see "license" section below) -->
+                        <includes>
+                            <include>**/src/main/kotlin/**/*.kt</include>
+                            <include>**/src/*test/kotlin/**/*.kt</include>
+                        </includes>
+                        <excludes>
+                            <exclude>**/generated/**</exclude>
+                        </excludes>
+                        <licenseHeader>
+                            <file>COPYRIGHT_HEADER</file>
+                        </licenseHeader>
+                    </kotlin>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>
