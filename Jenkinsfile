@@ -81,7 +81,7 @@ pipeline {
             }
             steps {
                 script {
-                    def buildDir = "./"
+                    def buildDir = "omem-service"
                     def dockerFile = "Dockerfile"
                     def dockerRegistry = dockerGetGematikRegistry()
                     def buildArgs = "--build-arg BUILD_DATE=${BUILD_DATE}"
