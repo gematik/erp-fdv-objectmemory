@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
-  title: "E-Rezept-App  bject Memory"
-  description: "REST interface to access/update/delete images from Cloud Storage Bucket."
+  title: "E-Rezept-App  Object Memory"
+  description: "REST interface to upload/retrieve/delete images from Cloud Storage."
   version: 1.0.0
   contact:
     name: gematik GmbH

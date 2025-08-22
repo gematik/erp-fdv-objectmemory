@@ -1,9 +1,0 @@
-COPYRIGHT_HEADER
-Jenkinsfile
-*.Jenkinsfile
-.gitlab
-CI
-*.ppcs
-*.pcs
-**/nginx.conf
-**/.env
