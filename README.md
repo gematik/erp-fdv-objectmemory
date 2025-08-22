@@ -1,9 +1,9 @@
 <img align="right" width="250" height="47" src="gematik_logo.png"/> <br/> 
 
-# E-Rezept FdV Object Memory
+# E-Rezept-App Object Memory
 
 <!-- TOC -->
-* [E-Rezept FdV ObjectMemory](#e-rezept-fdv-test-driver-interface)
+* [E-Rezept-App ObjectMemory](#e-rezept-fdv-test-driver-interface)
   * [About The Project](#about-the-project)
     * [Release Notes](#release-notes)
   * [Contributing](#contributing)

@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: "E-Rezept Object Memory"
+  title: "E-Rezept-App  bject Memory"
   description: "REST interface to access/update/delete images from Cloud Storage Bucket."
   version: 1.0.0
   contact:
