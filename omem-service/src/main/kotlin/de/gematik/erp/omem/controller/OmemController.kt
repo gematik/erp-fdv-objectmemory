@@ -186,6 +186,24 @@ open class OmemController(
             storageUrlRepo.save(storageUrl)
         }
     }
+    @PutMapping("storage/confirm")
+    open fun confirmTest(@RequestParam telematikId: String, @RequestParam dataType: String) {
+        val storageMeta = storageService.readMetaCached(telematikId)!!
+        apiKeyAspect.checkUserApiKey(storageMeta)
+        val actorId = storageMeta.actorId
+
+        val encodedActorId = URLEncoder.encode(actorId, "UTF-8").replace("+", "%20")
+        val encodedData = URLEncoder.encode(dataType, "UTF-8").replace("+", "%20")
+
+        var url = "-"
+        if (dataType.uppercase() != "TEAM_BILD") {
+            // store URL to a public image in a database for future requests
+            url = "https://storage.googleapis.com/${getBucketName(dataType)}/pharmacy/$encodedActorId/$encodedData"
+        }
+        val storageUrl = StorageUrl(0, storageMeta, url, dataType, telematikId)
+        storageUrlRepo.save(storageUrl)
+
+    }
 
     @DeleteMapping("storage/delete")
     open fun deleteFromBucket(
